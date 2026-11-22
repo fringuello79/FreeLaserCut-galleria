@@ -168,6 +168,21 @@ async function moderazione(env: Env, l: Lavoro): Promise<Esito> {
   return unisci(esiti);
 }
 
+// 0.22.0: «OK» basta solo se arriva al primo colpo. Dopo un «non so» (risposta strana o IA che non risponde) servono
+// due «OK» di fila: un lavoro dubbio non diventa pubblico per una risposta fortunata.
+export async function decidi(env: Env, l: Lavoro, primo: boolean): Promise<Esito> {
+  let e = await moderazione(env, l);
+  if (primo && e.esito === "non_so") {
+    e = await moderazione(env, l); // subito un secondo tentativo: da qui in poi vale la regola dei due «OK»
+    primo = false;
+  }
+  if (!primo && e.esito === "ok") {
+    const conferma = await moderazione(env, l);
+    if (conferma.esito !== "ok") return conferma.esito === "non_so" ? { esito: "non_so", motivo: "un solo OK" } : conferma;
+  }
+  return e;
+}
+
 async function applicaEsito(env: Env, l: Lavoro, e: Esito): Promise<string> {
   const ora = Date.now();
   if (e.esito === "ok") {
@@ -194,7 +209,7 @@ async function concludi(req: Request, env: Env, id: string): Promise<Response> {
   if (l.stato !== "caricamento") throw new Rifiuto("stato", "il lavoro è già stato concluso", 409);
   const mancano = parti(l.foto_n).filter((p) => !(l.parti as string).split(",").includes(p));
   if (mancano.length) return json({ errore: "mancano", messaggio: "mancano dei file", mancano }, 400);
-  const stato = await applicaEsito(env, l, await moderazione(env, l));
+  const stato = await applicaEsito(env, l, await decidi(env, l, true));
   const r = await lavoro(env, id);
   return json({ id, stato, motivo: r?.motivo_stato || "" });
 }
@@ -245,14 +260,22 @@ async function scheda(req: Request, env: Env, id: string): Promise<Response> {
   return errore("non_trovato", "lavoro non trovato", 404);
 }
 
-async function file(env: Env, ctx: ExecutionContext, id: string, parte: string): Promise<Response> {
+async function file(req: Request, env: Env, ctx: ExecutionContext, id: string, parte: string): Promise<Response> {
   const l = await lavoro(env, id);
-  if (!l || l.stato !== "pubblico") return errore("non_trovato", "lavoro non trovato", 404);
+  if (!l) return errore("non_trovato", "lavoro non trovato", 404);
+  // 0.22.0: l'anteprima di un lavoro non ancora pubblico la vede solo chi l'ha condiviso, con la sua chiave
+  let mio = false;
+  if (l.stato !== "pubblico" && parte === "anteprima" && l.stato !== "tolto" && l.stato !== "caricamento") {
+    const chiave = req.headers.get("x-flc-chiave") || "";
+    mio = !!chiave && uguali(await sha256hex(chiave), l.chiave_hash);
+  }
+  if (l.stato !== "pubblico" && !mio) return errore("non_trovato", "lavoro non trovato", 404);
   if (!parti(l.foto_n).includes(parte) || parte === "mini" || parte.endsWith("mini")) return errore("non_trovato", "file non trovato", 404);
   const b = await env.FILES.get(`${id}/${parte}`, "arrayBuffer");
   if (!b) return errore("non_trovato", "file non trovato", 404);
   const tipi: Record<string, string> = { progetto: "application/zip", anteprima: "image/png" };
-  const h: Record<string, string> = { ...CORS, "content-type": tipi[parte] || "image/jpeg", "cache-control": "public, max-age=86400" };
+  const h: Record<string, string> = { ...CORS, "content-type": tipi[parte] || "image/jpeg",
+    "cache-control": mio ? "private, no-store" : "public, max-age=86400" };
   if (parte === "progetto") {
     h["content-disposition"] = `attachment; filename="${id}.flcut"`;
     h["cache-control"] = "no-store";
@@ -366,7 +389,7 @@ export async function ogniOra(env: Env): Promise<{ ricontrollati: number; puliti
   const attesa = await env.DB.prepare("SELECT * FROM lavori WHERE stato = 'attesa' ORDER BY creato LIMIT 20").all<Lavoro>();
   let ricontrollati = 0;
   for (const l of attesa.results || []) {
-    await applicaEsito(env, l, await moderazione(env, l));
+    await applicaEsito(env, l, await decidi(env, l, false));
     ricontrollati++;
   }
   const limite = Date.now() - GIORNO_MS;
@@ -398,9 +421,9 @@ export default {
         if (a === "salute") return json({ ok: true, versione: env.VERSIONE || "", ora: new Date().toISOString() });
         if (a === "elenco") return await elenco(url, env);
         if (a === "lavoro" && b) return await scheda(req, env, b);
-        if (a === "file" && b) return await file(env, ctx, b, "progetto");
-        if (a === "anteprima" && b) return await file(env, ctx, b, "anteprima");
-        if (a === "foto" && b && /^[1-3]$/.test(c || "")) return await file(env, ctx, b, "foto" + c);
+        if (a === "file" && b) return await file(req, env, ctx, b, "progetto");
+        if (a === "anteprima" && b) return await file(req, env, ctx, b, "anteprima");
+        if (a === "foto" && b && /^[1-3]$/.test(c || "")) return await file(req, env, ctx, b, "foto" + c);
         if (a === "admin" && b === "nascosti") return await admin(req, env, "nascosti", "");
       }
       if (req.method === "POST") {

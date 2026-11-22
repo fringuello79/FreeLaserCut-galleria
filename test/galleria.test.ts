@@ -1,7 +1,7 @@
 // Prove della Galleria: una prova per regola, più guasti messi apposta (vedi la fine del file).
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import worker, { daNascondere, ogniOra } from "../src/index";
+import worker, { daNascondere, decidi, ogniOra } from "../src/index";
 import { controllaScheda, controllaTesto, controllaZip, LIMITI, Rifiuto } from "../src/controlli";
 import { leggiRisposta, unisci } from "../src/ia";
 
@@ -16,6 +16,11 @@ function aiFinta(risposta: string | (() => never)) {
   return { chiamate, run: async (_m: string, input: any) => { chiamate.push(input); if (typeof risposta === "function") risposta(); return { response: risposta }; } };
 }
 let AI = aiFinta("OK");
+// risposte diverse una dopo l'altra (l'ultima si ripete)
+function aiSequenza(risposte: string[]) {
+  const chiamate: any[] = [];
+  return { chiamate, run: async (_m: string, input: any) => { chiamate.push(input); return { response: risposte[Math.min(chiamate.length - 1, risposte.length - 1)] }; } };
+}
 
 async function chiama(metodo: string, percorso: string, opz: { inst?: number; json?: any; body?: Uint8Array; chiave?: string; admin?: string; ai?: any } = {}) {
   const h: Record<string, string> = {};
@@ -187,6 +192,37 @@ describe("controllo con l'IA", () => {
     expect(r.ricontrollati).toBeGreaterThanOrEqual(1);
     expect((await chiama("GET", `/v1/lavoro/${id}`)).stato).toBe(200);
   });
+  it("0.22.0: risposte scritte male che dicono il motivo: rifiuto (la prova del portachiavi esplicito)", () => {
+    for (const r of ["**NO: adult**", "No, adult content.", "NO - adult", "no:adult.", "Answer: NO:adult", "OK but this is sexual",
+      "NO: explicit", "The image shows a phallic shape", "\"NO:violence\""])
+      expect(leggiRisposta({ response: r }).esito, r).toBe("no");
+    expect(leggiRisposta({ response: "No, adult content." })).toEqual({ esito: "no", motivo: "adult" });
+    expect(leggiRisposta({ response: "**OK**" }).esito).toBe("ok");
+    expect(leggiRisposta({ response: "Answer: OK" }).esito).toBe("ok");
+    expect(leggiRisposta({ response: "NO: not laser" }).esito).toBe("nascondi");
+    expect(leggiRisposta({ response: "OK, it looks like a nice keychain for everyone" }).esito).toBe("non_so");
+    expect(leggiRisposta({ response: "I cannot help with that." }).esito).toBe("non_so");
+  });
+  it("0.22.0: dopo un «non so» servono due OK di fila", async () => {
+    expect((await condividiTutto(16, {}, aiSequenza(["boh", "OK", "OK"]))).fine.dati.stato).toBe("pubblico");
+    expect((await condividiTutto(17, {}, aiSequenza(["boh", "OK", "boh"]))).fine.dati.stato).toBe("attesa");
+    expect((await condividiTutto(18, {}, aiSequenza(["boh", "OK", "NO:adult"]))).fine.dati.stato).toBe("rifiutato");
+    expect((await condividiTutto(19, {}, aiSequenza(["boh", "NO: adult"]))).fine.dati.stato).toBe("rifiutato");
+    const ai = aiSequenza(["OK"]);
+    expect((await condividiTutto(20, {}, ai)).fine.dati.stato).toBe("pubblico");
+    expect(ai.chiamate.length).toBe(1); // al primo colpo basta un OK
+  });
+  it("0.22.0: ogni ora, un lavoro in attesa diventa pubblico solo con due OK di fila", async () => {
+    const { id, chiave } = await condividiTutto(21, {}, aiFinta("boh"));
+    await ogniOra({ ...E, AI: aiSequenza(["OK", "boh"]) });
+    expect((await chiama("GET", `/v1/lavoro/${id}`, { chiave })).dati.stato).toBe("attesa");
+    await ogniOra({ ...E, AI: aiSequenza(["OK", "NO:adult"]) });
+    expect((await chiama("GET", `/v1/lavoro/${id}`)).stato).toBe(404);
+    const due = await condividiTutto(22, {}, aiFinta("boh"));
+    const ai = aiSequenza(["OK", "OK"]);
+    await ogniOra({ ...E, AI: ai });
+    expect((await chiama("GET", `/v1/lavoro/${due.id}`)).stato).toBe(200);
+  });
   it("lettura delle risposte", () => {
     expect(leggiRisposta({ response: "OK" }).esito).toBe("ok");
     expect(leggiRisposta({ response: "ok." }).esito).toBe("ok");
@@ -261,6 +297,17 @@ describe("autore e amministratore", () => {
     expect((await chiama("POST", `/v1/admin/togli/${id}`, { admin: ADMIN })).stato).toBe(200);
     expect((await chiama("GET", `/v1/lavoro/${id}`)).stato).toBe(404);
   });
+  it("0.22.0: l'anteprima di un lavoro non pubblico la vede solo l'autore", async () => {
+    const { id, chiave } = await condividiTutto(43, {}, aiFinta("?"));
+    expect((await chiama("GET", `/v1/anteprima/${id}`)).stato).toBe(404);
+    expect((await chiama("GET", `/v1/anteprima/${id}`, { chiave: "x".repeat(40) })).stato).toBe(404);
+    const r = await chiama("GET", `/v1/anteprima/${id}`, { chiave });
+    expect(r.stato).toBe(200);
+    expect(r.r.headers.get("cache-control")).toBe("private, no-store");
+    expect((await chiama("GET", `/v1/file/${id}`, { chiave })).stato).toBe(404); // il progetto no
+    await chiama("POST", `/v1/togli/${id}`, { chiave, json: {} });
+    expect((await chiama("GET", `/v1/anteprima/${id}`, { chiave })).stato).toBe(404);
+  });
   it("l'autore vede lo stato del suo lavoro in attesa", async () => {
     const { id, chiave } = await condividiTutto(42, {}, aiFinta("?"));
     expect((await chiama("GET", `/v1/lavoro/${id}`)).stato).toBe(404);
@@ -292,6 +339,10 @@ describe("controlli senza rete", () => {
     expect(controllaTesto("Portachiavi con il nome, 3 mm")).toBeNull();
     expect(controllaTesto("Città di L'Aquila 2026")).toBeNull();
     expect(controllaTesto("Aaaaaaaaaaaa")).toBe("ripetuto");
+    for (const t of ["Portachiavi con contenuto esplicito", "Explicit keychain", "Llavero erótico", "Porte-clés sexy"])
+      expect(controllaTesto(t), t).toBe("parole");
+    for (const t of ["Tagliere in legno nudo", "Hard maple 6 mm", "Scatola per hard disk", "Sesto senso"])
+      expect(controllaTesto(t), t).toBeNull();
   });
   it("scheda: categorie, licenze e numeri fuori dai limiti", () => {
     expect(() => controllaScheda(scheda({ categoria: "armi" }))).toThrow(/categoria/);

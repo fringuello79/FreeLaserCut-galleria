@@ -61,6 +61,11 @@ const PAROLE_VIETATE = [
   "viagra", "cialis", "casino", "scommesse", "bitcoin", "crypto", "forex", "escort", "onlyfans", "telegram.me",
   // contenuti per adulti
   "porn", "porno", "xxx", "nsfw", "hentai",
+  // 0.22.0: chi descrive il proprio lavoro come esplicito o per adulti (it, en, es, fr, pt)
+  "esplicito", "esplicita", "espliciti", "esplicite", "explicit", "explicito", "explicita", "explicite",
+  // non «nudo» (legno nudo) né «hard» (hard maple, hard disk)
+  "sex", "sexy", "sesso", "sexo", "sexe", "erotico", "erotica", "erotic", "erotique", "nudes", "dildo", "penis",
+  "vagina",
   // volgarità frequenti (it, en, es, fr, pt); il resto lo guarda il controllo con l'IA
   "cazzo", "puttana", "troia", "vaffanculo", "fuck", "shit", "bitch", "puta", "mierda", "joder",
   "putain", "merde", "salope", "caralho", "porra",

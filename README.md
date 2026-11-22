@@ -9,7 +9,7 @@ Il servizio che riceve, controlla e mostra i lavori condivisi dagli utenti di [F
 
 ## Regole
 - Niente account: ogni installazione di FreeLaserCut ha un numero a caso; il servizio ne salva solo un'impronta con sale.
-- Controlli automatici a ogni condivisione: dati, testi (niente link, mail, telefoni, parole vietate), file (`.flcut` con solo `project.json` e `images/*.png`, niente file gonfiati), immagini con l'IA. Senza un «OK» dell'IA un lavoro non diventa mai pubblico.
+- Controlli automatici a ogni condivisione: dati, testi (niente link, mail, telefoni, parole vietate), file (`.flcut` con solo `project.json` e `images/*.png`, niente file gonfiati), immagini con l'IA. Senza un «OK» dell'IA un lavoro non diventa mai pubblico; dopo una risposta dubbia servono due «OK» di fila (1.1.0). Una risposta scritta male che nomina un motivo di rifiuto vale come rifiuto. L'autore vede l'anteprima dei suoi lavori non ancora pubblici, con la sua chiave.
 - Poi decide la community: stelle, «L'ho fatto anch'io», segnalazioni. Con 3 segnalazioni (o 1 «non adatto» su un lavoro nuovo) il lavoro si nasconde da solo.
 - Limiti: 5 condivisioni al giorno per installazione, 200 in tutto.
 

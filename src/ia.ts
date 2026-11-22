@@ -11,20 +11,37 @@ const ISTRUZIONI =
   "ornaments, photos engraved on wood, test grids). You get one picture (a project preview or a photo of the " +
   "finished piece) and its title and description, written by a user in any language. Reply with exactly one line: " +
   "OK if it is acceptable for all ages, or NO:<reason> where reason is one of adult, violence, hate, weapon, drugs, " +
-  "spam, not_laser. Use not_laser only if the picture clearly has nothing to do with a laser project. " +
+  "spam, not_laser. Sexual shapes (genitals, sex acts) and texts that call the content explicit, sexual, erotic or " +
+  "adult are NO:adult. Use not_laser only if the picture clearly has nothing to do with a laser project. " +
   "Ordinary objects, text, logos, animals, people in normal photos and holiday themes are OK. Do not explain.";
+
+// Parole che, dentro una risposta scritta male, dicono comunque il motivo del rifiuto (0.22.0: la prova di Ale del
+// 22/11 con un portachiavi esplicito ha avuto una risposta che non era né «OK» né «NO:adult», ed è rimasto in attesa).
+const SINONIMI: Record<string, string> = {
+  adult: "adult", sexual: "adult", sex: "adult", explicit: "adult", nsfw: "adult", porn: "adult", nudity: "adult",
+  nude: "adult", erotic: "adult", genital: "adult", genitals: "adult", phallic: "adult", penis: "adult",
+  violence: "violence", violent: "violence", gore: "violence", blood: "violence",
+  hate: "hate", hateful: "hate", racist: "hate", nazi: "hate",
+  weapon: "weapon", weapons: "weapon", gun: "weapon", guns: "weapon", firearm: "weapon",
+  drugs: "drugs", drug: "drugs", cannabis: "drugs", marijuana: "drugs",
+  spam: "spam", advertising: "spam", advertisement: "spam",
+};
 
 export function leggiRisposta(r: unknown): Esito {
   const t = typeof r === "string" ? r : (r as any)?.response;
   if (typeof t !== "string") return { esito: "non_so", motivo: "risposta vuota" };
-  const s = t.trim();
-  if (/^ok\b/i.test(s)) return { esito: "ok" };
-  const m = /^no\s*:\s*([a-z_]+)/i.exec(s);
+  // via la formattazione che i modelli aggiungono (grassetto, virgolette, punto finale, «Answer:»)
+  const s = t.trim().replace(/[*`"'«»“”]/g, "").replace(/^\s*(answer|reply|risposta)\s*[:\-]\s*/i, "").trim();
+  const parole = s.toLowerCase().split(/[^a-z_]+/).filter(Boolean);
+  const m = /^no\s*[:,\-]?\s*([a-z_]+)/i.exec(s);
   if (m) {
     const motivo = m[1].toLowerCase();
     if ((MOTIVI_RIFIUTO as readonly string[]).includes(motivo)) return { esito: "no", motivo };
-    if (motivo === "not_laser") return { esito: "nascondi", motivo };
+    if (motivo === "not_laser" || (motivo === "not" && parole.includes("laser"))) return { esito: "nascondi", motivo: "not_laser" };
   }
+  // un motivo di rifiuto scritto da qualche parte vale come rifiuto, anche se la risposta comincia con «OK»
+  for (const p of parole) if (SINONIMI[p]) return { esito: "no", motivo: SINONIMI[p] };
+  if (/^ok\b/i.test(s) && parole.length <= 3) return { esito: "ok" };
   return { esito: "non_so", motivo: s.slice(0, 60) };
 }
 

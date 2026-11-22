@@ -26,4 +26,4 @@ simple = { limit = 60, period = 60 }
 crons = ["17 * * * *"]
 
 [vars]
-VERSIONE = "1.0.0"
+VERSIONE = "1.1.0"
