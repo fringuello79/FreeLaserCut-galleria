@@ -1,0 +1,18 @@
+# Solo per le prove: niente IA e niente limite di Cloudflare (le prove li sostituiscono con dei finti).
+name = "flc-galleria-prove"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "flc-galleria-prove"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "FILES"
+id = "prove"
+
+[vars]
+VERSIONE = "prove"
+ADMIN_TOKEN = "chiave-di-amministrazione-delle-prove-0123456789"

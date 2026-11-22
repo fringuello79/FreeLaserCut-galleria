@@ -1,0 +1,18 @@
+{
+  "name": "flc-galleria",
+  "private": true,
+  "description": "Galleria FreeLaserCut: il servizio che riceve, controlla e mostra i lavori condivisi dagli utenti.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "controlla": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.9.0",
+    "@cloudflare/workers-types": "^5.20261121.1",
+    "typescript": "^5.9.0",
+    "vitest": "5.1.1",
+    "wrangler": "4.166.0"
+  }
+}

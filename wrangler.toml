@@ -1,0 +1,29 @@
+# Galleria FreeLaserCut. Gli ID di D1 e KV li scrive scripts/prepara.mjs durante la pubblicazione (GitHub Actions).
+name = "flc-galleria"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "flc-galleria"
+database_id = "__D1_ID__"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "FILES"
+id = "__KV_ID__"
+
+[ai]
+binding = "AI"
+
+[[ratelimits]]
+name = "LIMITE"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+VERSIONE = "1.0.0"
